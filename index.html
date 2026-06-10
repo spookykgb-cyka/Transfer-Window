@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PalletTrack" />
+  <meta name="theme-color" content="#0f1117" />
+  <title>PalletTrack</title>
+
+  <!-- QR code generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- QR code reading -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d26;
+      --card:      #22263a;
+      --border:    #2e3350;
+      --amber:     #f5a623;
+      --amber-dim: #7d5512;
+      --green:     #3ecf8e;
+      --red:       #e05252;
+      --text-pri:  #e8eaf0;
+      --text-sec:  #7a7f99;
+      --text-dim:  #4a4f6a;
+      --mono:      'Roboto Mono', 'Courier New', monospace;
+      --sans:      'Inter', system-ui, sans-serif;
+      --safe-top:    env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text-pri);
+      font-family: var(--sans);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    #app {
+      max-width: 480px;
+      margin: 0 auto;
+      min-height: 100vh;
+      padding-bottom: calc(24px + var(--safe-bottom));
+    }
+
+    /* ── Views ── */
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: calc(18px + var(--safe-top)) 16px 14px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 100;
+    }
+    .header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-pri);
+      flex: 1;
+      text-align: center;
+    }
+    .header h1.mono { font-family: var(--mono); font-size: 13px; letter-spacing: 0.5px; }
+    .header-side { width: 64px; }
+    .header-side.right { display: flex; justify-content: flex-end; }
+
+    /* ── Buttons ── */
+    .btn {
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--sans);
+      font-weight: 500;
+      font-size: 15px;
+      padding: 12px 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: opacity 0.1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn:active { opacity: 0.75; }
+    .btn.amber  { background: var(--amber); color: #0f1117; }
+    .btn.green  { background: var(--green); color: #0f1117; }
+    .btn.ghost  { background: var(--surface); color: var(--text-pri); border: 1px solid var(--border); }
+    .btn.small  { font-size: 13px; padding: 8px 12px; }
+    .btn.full   { width: 100%; }
+    .btn-back   { background: none; border: none; color: var(--text-sec); cursor: pointer; font-family: var(--sans); font-size: 14px; padding: 4px 0; }
+
+    /* ── Body ── */
+    .body { padding: 0 16px; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+    }
+    .pallet-card {
+      cursor: pointer;
+      border-left: 3px solid var(--amber);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .pallet-card.closed { border-left-color: var(--green); }
+    .pallet-card-header { display: flex; justify-content: space-between; align-items: center; }
+    .pallet-id { font-family: var(--mono); font-size: 12px; color: var(--amber); }
+    .pallet-route { margin-top: 6px; font-size: 14px; color: var(--text-pri); }
+    .pallet-meta  { margin-top: 4px; font-size: 12px; color: var(--text-sec); }
+
+    /* ── Badge ── */
+    .badge {
+      border-radius: 4px;
+      padding: 3px 7px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    .badge.open   { background: #3d2e0a; color: var(--amber); }
+    .badge.closed { background: #1a3d2e; color: var(--green); }
+    .badge.large  { font-size: 13px; padding: 5px 10px; }
+
+    /* ── Form fields ── */
+    .field { margin-bottom: 14px; }
+    .field-label {
+      font-size: 11px;
+      color: var(--text-sec);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 6px;
+    }
+    input[type="text"], input[type="date"] {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-pri);
+      font-family: var(--mono);
+      font-size: 14px;
+      padding: 10px 12px;
+      width: 100%;
+      outline: none;
+      -webkit-appearance: none;
+    }
+    input[type="date"] { color-scheme: dark; }
+    input::placeholder { color: var(--text-dim); }
+
+    /* ── Meta rows ── */
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+    .meta-row .label { color: var(--text-sec); }
+    .meta-row .value { color: var(--text-pri); }
+
+    /* ── Section label ── */
+    .section-label {
+      font-size: 11px;
+      color: var(--text-sec);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+
+    /* ── Transfer row ── */
+    .transfer-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-bottom: 6px;
+    }
+    .transfer-num { font-family: var(--mono); font-size: 14px; color: var(--text-pri); }
+    .transfer-remove {
+      background: none;
+      border: none;
+      color: var(--red);
+      cursor: pointer;
+      font-size: 20px;
+      line-height: 1;
+      padding: 0 4px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ── Add transfer row ── */
+    .add-row { display: flex; gap: 8px; margin-bottom: 8px; }
+    .add-row input { flex: 1; }
+
+    /* ── Camera / scan panels ── */
+    .scan-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .scan-status { font-size: 12px; color: var(--text-sec); margin-bottom: 10px; }
+    .scan-video { width: 100%; border-radius: 6px; display: block; background: #000; max-height: 280px; object-fit: cover; }
+    .scan-canvas { display: none; }
+
+    /* ── QR display ── */
+    .qr-block {
+      text-align: center;
+      margin-bottom: 16px;
+    }
+    .qr-block .qr-label {
+      font-size: 11px;
+      color: var(--text-sec);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 14px;
+    }
+    .qr-wrap {
+      display: inline-block;
+      background: #e8eaf0;
+      padding: 10px;
+      border-radius: 6px;
+    }
+    .qr-hint { font-size: 11px; color: var(--text-dim); margin-top: 10px; }
+
+    /* ── Scan QR button (list view) ── */
+    .scan-qr-btn {
+      width: 100%;
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      color: var(--text-sec);
+      font-family: var(--sans);
+      font-size: 14px;
+      padding: 14px;
+      cursor: pointer;
+      margin-bottom: 16px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ── Confirm box ── */
+    .confirm-box {
+      background: var(--card);
+      border: 1px solid var(--amber-dim);
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 16px;
+    }
+    .confirm-box p { color: var(--amber); font-size: 14px; margin-bottom: 12px; line-height: 1.5; }
+    .confirm-btns { display: flex; gap: 8px; }
+
+    /* ── Misc ── */
+    .empty { color: var(--text-dim); font-size: 14px; text-align: center; padding: 28px 0; }
+    .err   { color: var(--red); font-size: 13px; margin-top: 6px; }
+    .mt16  { margin-top: 16px; }
+    .mt24  { margin-top: 24px; }
+    .mb16  { margin-bottom: 16px; }
+    .arrow { color: var(--text-sec); }
+
+    /* ── Install banner ── */
+    #install-banner {
+      display: none;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 16px;
+      font-size: 13px;
+      color: var(--text-sec);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<div id="install-banner">
+  Add to Home Screen for best experience: tap <strong style="color:var(--text-pri)">Share → Add to Home Screen</strong>
+</div>
+
+<div id="app">
+
+  <!-- ══ LIST VIEW ══ -->
+  <div id="view-list" class="view active">
+    <div class="header">
+      <div class="header-side"></div>
+      <h1>Pallets</h1>
+      <div class="header-side right">
+        <button class="btn amber small" onclick="showCreate()">+ New</button>
+      </div>
+    </div>
+    <div class="body">
+      <button class="scan-qr-btn" onclick="startQRScan()">▦ &nbsp;Scan Pallet QR</button>
+      <div id="qr-scan-panel" style="display:none">
+        <div class="scan-panel">
+          <div class="scan-status" id="qr-scan-status">Loading scanner…</div>
+          <video id="qr-video" class="scan-video" autoplay playsinline muted></video>
+          <canvas id="qr-canvas" class="scan-canvas"></canvas>
+          <button class="btn ghost full mt16" onclick="stopQRScan()">Cancel</button>
+        </div>
+      </div>
+      <div id="pallet-list"></div>
+    </div>
+  </div>
+
+  <!-- ══ CREATE VIEW ══ -->
+  <div id="view-create" class="view">
+    <div class="header">
+      <div class="header-side"><button class="btn-back" onclick="showList()">← Back</button></div>
+      <h1>New Pallet</h1>
+      <div class="header-side"></div>
+    </div>
+    <div class="body">
+      <div class="field">
+        <div class="field-label">From Branch</div>
+        <input type="text" id="create-from" placeholder="e.g. Downtown" />
+      </div>
+      <div class="field">
+        <div class="field-label">To Branch</div>
+        <input type="text" id="create-to" placeholder="e.g. Northside" />
+      </div>
+      <div class="field">
+        <div class="field-label">Transfer Date</div>
+        <input type="date" id="create-date" />
+      </div>
+      <div class="err" id="create-err"></div>
+      <button class="btn amber full mt24" onclick="submitCreate()">Create Pallet</button>
+    </div>
+  </div>
+
+  <!-- ══ DETAIL VIEW ══ -->
+  <div id="view-detail" class="view">
+    <div class="header">
+      <div class="header-side"><button class="btn-back" onclick="showList()">← Back</button></div>
+      <h1 class="mono" id="detail-id">—</h1>
+      <div class="header-side"></div>
+    </div>
+    <div class="body">
+      <div class="card mb16" id="detail-meta"></div>
+      <div id="detail-qr" style="display:none">
+        <div class="card qr-block">
+          <div class="qr-label">Pallet QR Code</div>
+          <div class="qr-wrap"><div id="qr-output"></div></div>
+          <div class="qr-hint">Scan to view pallet contents</div>
+        </div>
+      </div>
+      <div class="section-label" id="transfers-label">Transfers (0)</div>
+      <div id="barcode-scan-panel" style="display:none">
+        <div class="scan-panel">
+          <div class="scan-status" id="barcode-status">Starting camera…</div>
+          <video id="barcode-video" class="scan-video" autoplay playsinline muted></video>
+          <button class="btn ghost full mt16" onclick="stopBarcodeScan()">Cancel</button>
+        </div>
+      </div>
+      <div id="add-transfer-row" class="add-row">
+        <input type="text" id="transfer-input" placeholder="Transfer number" onkeydown="if(event.key==='Enter')addTransferManual()" />
+        <button class="btn amber small" onclick="addTransferManual()">Add</button>
+        <button class="btn ghost small" onclick="startBarcodeScan()" title="Scan barcode">▦</button>
+      </div>
+      <div class="err" id="transfer-err"></div>
+      <div id="transfer-list"></div>
+      <div id="close-section" class="mt24"></div>
+    </div>
+  </div>
+
+  <!-- ══ SCAN RESULT VIEW ══ -->
+  <div id="view-scan-result" class="view">
+    <div class="header">
+      <div class="header-side"><button class="btn-back" onclick="showList()">← Back</button></div>
+      <h1>Pallet Info</h1>
+      <div class="header-side"></div>
+    </div>
+    <div class="body" id="scan-result-body"></div>
+  </div>
+
+</div><!-- #app -->
+
+<script>
+// ══════════════════════════════════════════════════════════════════════════
+// DATA
+// ══════════════════════════════════════════════════════════════════════════
+const STORAGE_KEY = 'pallets_v1';
+
+function loadPallets() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch { return []; }
+}
+function savePallets(p) { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); }
+
+let pallets = loadPallets();
+let activePalletId = null;
+
+function getPallet(id) { return pallets.find(p => p.id === id); }
+
+function updatePallet(id, fn) {
+  pallets = pallets.map(p => p.id === id ? fn({...p}) : p);
+  savePallets(pallets);
+}
+
+function genId() {
+  return 'PLT-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2,5).toUpperCase();
+}
+
+function today() { return new Date().toISOString().slice(0,10); }
+
+function fmt(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ROUTING
+// ══════════════════════════════════════════════════════════════════════════
+function showView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + id).classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+function showList() {
+  stopQRScan();
+  stopBarcodeScan();
+  renderList();
+  showView('list');
+}
+
+function showCreate() {
+  document.getElementById('create-from').value = '';
+  document.getElementById('create-to').value = '';
+  document.getElementById('create-date').value = today();
+  document.getElementById('create-err').textContent = '';
+  showView('create');
+}
+
+function showDetail(id) {
+  activePalletId = id;
+  renderDetail();
+  showView('detail');
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// LIST VIEW
+// ══════════════════════════════════════════════════════════════════════════
+function renderList() {
+  const el = document.getElementById('pallet-list');
+  const sorted = [...pallets].reverse();
+  if (sorted.length === 0) {
+    el.innerHTML = '<div class="empty">No pallets yet. Tap + New to start.</div>';
+    return;
+  }
+  el.innerHTML = sorted.map(p => {
+    const closed = !!p.closedAt;
+    return `
+      <div class="card pallet-card ${closed ? 'closed' : ''}" onclick="showDetail('${p.id}')">
+        <div class="pallet-card-header">
+          <span class="pallet-id">${p.id}</span>
+          <span class="badge ${closed ? 'closed' : 'open'}">${closed ? 'CLOSED' : 'OPEN'}</span>
+        </div>
+        <div class="pallet-route">${esc(p.fromBranch)} <span class="arrow">→</span> ${esc(p.toBranch)}</div>
+        <div class="pallet-meta">${p.transfers.length} transfer${p.transfers.length !== 1 ? 's' : ''} · ${fmt(p.transferDate)}</div>
+      </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// CREATE VIEW
+// ══════════════════════════════════════════════════════════════════════════
+function submitCreate() {
+  const from = document.getElementById('create-from').value.trim();
+  const to   = document.getElementById('create-to').value.trim();
+  const date = document.getElementById('create-date').value;
+  const err  = document.getElementById('create-err');
+
+  if (!from || !to || !date) { err.textContent = 'All fields are required.'; return; }
+  if (from.toLowerCase() === to.toLowerCase()) { err.textContent = 'From and To must be different branches.'; return; }
+
+  const pallet = {
+    id: genId(), fromBranch: from, toBranch: to,
+    transferDate: date, generatedAt: new Date().toISOString(),
+    closedAt: null, transfers: [],
+  };
+  pallets.push(pallet);
+  savePallets(pallets);
+  showDetail(pallet.id);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// DETAIL VIEW
+// ══════════════════════════════════════════════════════════════════════════
+function renderDetail() {
+  const p = getPallet(activePalletId);
+  if (!p) { showList(); return; }
+  const closed = !!p.closedAt;
+
+  // Header ID
+  document.getElementById('detail-id').textContent = p.id;
+
+  // Meta card
+  document.getElementById('detail-meta').innerHTML = `
+    <div class="meta-row"><span class="label">Route</span><span class="value">${esc(p.fromBranch)} → ${esc(p.toBranch)}</span></div>
+    <div class="meta-row"><span class="label">Transfer Date</span><span class="value">${fmt(p.transferDate)}</span></div>
+    <div class="meta-row"><span class="label">Generated</span><span class="value">${fmt(p.generatedAt)}</span></div>
+    ${p.closedAt ? `<div class="meta-row"><span class="label">Closed</span><span class="value">${fmt(p.closedAt)}</span></div>` : ''}
+    <div style="margin-top:10px"><span class="badge large ${closed ? 'closed' : 'open'}">${closed ? 'CLOSED' : 'OPEN'}</span></div>
+  `;
+
+  // QR code
+  const qrSection = document.getElementById('detail-qr');
+  if (closed) {
+    qrSection.style.display = 'block';
+    generateQR(p);
+  } else {
+    qrSection.style.display = 'none';
+  }
+
+  // Add transfer row visibility
+  document.getElementById('add-transfer-row').style.display = closed ? 'none' : 'flex';
+  document.getElementById('transfer-err').textContent = '';
+
+  // Transfers
+  renderTransferList(p);
+
+  // Close section
+  renderCloseSection(p);
+}
+
+function renderTransferList(p) {
+  const closed = !!p.closedAt;
+  document.getElementById('transfers-label').textContent = `Transfers (${p.transfers.length})`;
+  const el = document.getElementById('transfer-list');
+  if (p.transfers.length === 0) {
+    el.innerHTML = '<div class="empty">No transfers yet.</div>';
+    return;
+  }
+  el.innerHTML = p.transfers.map(t => `
+    <div class="transfer-row">
+      <span class="transfer-num">${esc(t)}</span>
+      ${!closed ? `<button class="transfer-remove" onclick="removeTransfer('${esc(t)}')">×</button>` : ''}
+    </div>`).join('');
+}
+
+function renderCloseSection(p) {
+  const el = document.getElementById('close-section');
+  if (p.closedAt) { el.innerHTML = ''; return; }
+  if (p.transfers.length === 0) {
+    el.innerHTML = '<div style="color:var(--text-dim);font-size:13px;text-align:center">Add at least one transfer to close this pallet.</div>';
+    return;
+  }
+  el.innerHTML = `<button class="btn green full" onclick="showConfirmClose()">Close Pallet & Generate QR</button>`;
+}
+
+function showConfirmClose() {
+  document.getElementById('close-section').innerHTML = `
+    <div class="confirm-box">
+      <p>This locks all transfers and generates the QR code. Cannot be undone.</p>
+      <div class="confirm-btns">
+        <button class="btn green full" onclick="confirmClose()">Confirm</button>
+        <button class="btn ghost full" onclick="cancelClose()">Cancel</button>
+      </div>
+    </div>`;
+}
+
+function cancelClose() {
+  const p = getPallet(activePalletId);
+  if (p) renderCloseSection(p);
+}
+
+function confirmClose() {
+  updatePallet(activePalletId, p => ({ ...p, closedAt: new Date().toISOString() }));
+  renderDetail();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// TRANSFERS
+// ══════════════════════════════════════════════════════════════════════════
+function addTransfer(num) {
+  const n = num.trim().toUpperCase();
+  const errEl = document.getElementById('transfer-err');
+  if (!n) { errEl.textContent = 'Enter a transfer number.'; return false; }
+  const p = getPallet(activePalletId);
+  if (!p) return false;
+  if (p.transfers.includes(n)) { errEl.textContent = `${n} is already on this pallet.`; return false; }
+  errEl.textContent = '';
+  updatePallet(activePalletId, p => ({ ...p, transfers: [...p.transfers, n] }));
+  const updated = getPallet(activePalletId);
+  renderTransferList(updated);
+  renderCloseSection(updated);
+  return true;
+}
+
+function addTransferManual() {
+  const input = document.getElementById('transfer-input');
+  if (addTransfer(input.value)) input.value = '';
+}
+
+function removeTransfer(num) {
+  updatePallet(activePalletId, p => ({ ...p, transfers: p.transfers.filter(t => t !== num) }));
+  const updated = getPallet(activePalletId);
+  renderTransferList(updated);
+  renderCloseSection(updated);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// QR GENERATION
+// ══════════════════════════════════════════════════════════════════════════
+let qrInstance = null;
+
+function generateQR(p) {
+  const container = document.getElementById('qr-output');
+  container.innerHTML = '';
+  qrInstance = null;
+  const payload = JSON.stringify({
+    id: p.id, fromBranch: p.fromBranch, toBranch: p.toBranch,
+    transferDate: p.transferDate, generatedAt: p.generatedAt,
+    closedAt: p.closedAt, transfers: p.transfers,
+  });
+  try {
+    qrInstance = new QRCode(container, {
+      text: payload, width: 240, height: 240,
+      colorDark: '#0f1117', colorLight: '#e8eaf0',
+      correctLevel: QRCode.CorrectLevel.M,
+    });
+  } catch(e) {
+    container.innerHTML = '<div style="color:var(--red);font-size:13px;padding:20px">QR generation failed.</div>';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// BARCODE SCAN (transfer sticker → ZXing library, works on iOS Safari)
+// ══════════════════════════════════════════════════════════════════════════
+let zxingControls = null;
+
+async function loadZXing() {
+  if (window.ZXing) return true;
+  return new Promise((res) => {
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/@zxing/library@latest';
+    s.onload = () => res(!!window.ZXing);
+    s.onerror = () => res(false);
+    document.head.appendChild(s);
+  });
+}
+
+async function startBarcodeScan() {
+  const panel  = document.getElementById('barcode-scan-panel');
+  const addRow = document.getElementById('add-transfer-row');
+  const status = document.getElementById('barcode-status');
+
+  panel.style.display = 'block';
+  addRow.style.display = 'none';
+  status.textContent = 'Loading scanner…';
+
+  const loaded = await loadZXing();
+  if (!loaded) {
+    status.textContent = 'Scanner failed to load — enter number manually';
+    setTimeout(stopBarcodeScan, 2500);
+    return;
+  }
+
+  try {
+    const video = document.getElementById('barcode-video');
+    const hints = new Map();
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+      ZXing.BarcodeFormat.CODE_128,
+      ZXing.BarcodeFormat.CODE_39,
+      ZXing.BarcodeFormat.CODE_93,
+      ZXing.BarcodeFormat.EAN_13,
+      ZXing.BarcodeFormat.EAN_8,
+      ZXing.BarcodeFormat.UPC_A,
+      ZXing.BarcodeFormat.ITF,
+      ZXing.BarcodeFormat.CODABAR,
+    ]);
+    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+
+    const reader = new ZXing.BrowserMultiFormatReader(hints);
+
+    status.textContent = 'Point at the barcode on the transfer sticker';
+
+    // Pass undefined deviceId — ZXing will use getUserMedia with facingMode: environment
+    zxingControls = await reader.decodeFromVideoDevice(undefined, video, (result, err) => {
+      if (result) {
+        stopBarcodeScan();
+        addTransfer(result.getText());
+      }
+      // err is NotFoundException on every empty frame — ignore
+    });
+  } catch(e) {
+    const msg = e && e.message ? e.message : String(e);
+    document.getElementById('barcode-status').textContent = 'Error: ' + msg.slice(0, 80);
+    setTimeout(stopBarcodeScan, 4000);
+  }
+}
+
+function stopBarcodeScan() {
+  if (zxingControls) { try { zxingControls.stop(); } catch(e) {} zxingControls = null; }
+  const panel = document.getElementById('barcode-scan-panel');
+  if (panel) panel.style.display = 'none';
+  const addRow = document.getElementById('add-transfer-row');
+  const p = getPallet(activePalletId);
+  if (addRow && p && !p.closedAt) addRow.style.display = 'flex';
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// QR SCAN (read pallet QR → jsQR)
+// ══════════════════════════════════════════════════════════════════════════
+let qrScanStream = null;
+let qrScanRAF = null;
+
+async function startQRScan() {
+  document.querySelector('.scan-qr-btn').style.display = 'none';
+  document.getElementById('qr-scan-panel').style.display = 'block';
+  document.getElementById('qr-scan-status').textContent = 'Starting camera…';
+
+  try {
+    const video  = document.getElementById('qr-video');
+    qrScanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    video.srcObject = qrScanStream;
+    document.getElementById('qr-scan-status').textContent = 'Point at a pallet QR code';
+    scanQRFrame();
+  } catch(e) {
+    document.getElementById('qr-scan-status').textContent = 'Camera unavailable';
+  }
+}
+
+function scanQRFrame() {
+  const video  = document.getElementById('qr-video');
+  const canvas = document.getElementById('qr-canvas');
+  if (!video || !canvas || !qrScanStream) return;
+  if (video.readyState < 2) { qrScanRAF = requestAnimationFrame(scanQRFrame); return; }
+
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0);
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const code = jsQR(img.data, img.width, img.height);
+
+  if (code) {
+    try {
+      const data = JSON.parse(code.data);
+      if (data.id && data.transfers) {
+        stopQRScan();
+        showScanResult(data);
+        return;
+      }
+    } catch {}
+  }
+  qrScanRAF = requestAnimationFrame(scanQRFrame);
+}
+
+function stopQRScan() {
+  cancelAnimationFrame(qrScanRAF);
+  if (qrScanStream) { qrScanStream.getTracks().forEach(t => t.stop()); qrScanStream = null; }
+  document.getElementById('qr-scan-panel').style.display = 'none';
+  document.querySelector('.scan-qr-btn').style.display = 'block';
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SCAN RESULT VIEW
+// ══════════════════════════════════════════════════════════════════════════
+function showScanResult(data) {
+  const body = document.getElementById('scan-result-body');
+  body.innerHTML = `
+    <div class="card mb16">
+      <div style="font-family:var(--mono);color:var(--amber);font-size:12px;margin-bottom:10px">${esc(data.id)}</div>
+      <div class="meta-row"><span class="label">Route</span><span class="value">${esc(data.fromBranch)} → ${esc(data.toBranch)}</span></div>
+      <div class="meta-row"><span class="label">Transfer Date</span><span class="value">${fmt(data.transferDate)}</span></div>
+      <div class="meta-row"><span class="label">Generated</span><span class="value">${fmt(data.generatedAt)}</span></div>
+      <div class="meta-row"><span class="label">Closed</span><span class="value">${fmt(data.closedAt)}</span></div>
+      <div style="margin-top:10px"><span class="badge large closed">CLOSED</span></div>
+    </div>
+    <div class="section-label">Transfers (${data.transfers ? data.transfers.length : 0})</div>
+    ${(data.transfers || []).map(t => `<div class="transfer-row"><span class="transfer-num">${esc(t)}</span></div>`).join('')}
+    ${(!data.transfers || data.transfers.length === 0) ? '<div class="empty">No transfers recorded.</div>' : ''}
+  `;
+  showView('scan-result');
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// UTILITIES
+// ══════════════════════════════════════════════════════════════════════════
+function esc(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// PWA — register inline service worker for offline support
+// ══════════════════════════════════════════════════════════════════════════
+if ('serviceWorker' in navigator) {
+  const swCode = `
+    const CACHE = 'pallettrack-v1';
+    const PRECACHE = [
+      'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.js',
+      'https://unpkg.com/@zxing/library@latest',
+    ];
+    self.addEventListener('install', e => {
+      e.waitUntil(caches.open(CACHE).then(c => c.addAll(PRECACHE)).then(() => self.skipWaiting()));
+    });
+    self.addEventListener('activate', e => {
+      e.waitUntil(clients.claim());
+    });
+    self.addEventListener('fetch', e => {
+      e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
+    });
+  `;
+  const blob = new Blob([swCode], { type: 'application/javascript' });
+  const swUrl = URL.createObjectURL(blob);
+  navigator.serviceWorker.register(swUrl).catch(() => {});
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// iOS install banner
+// ══════════════════════════════════════════════════════════════════════════
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+const isStandalone = window.navigator.standalone;
+if (isIOS && !isStandalone) {
+  document.getElementById('install-banner').style.display = 'block';
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════════════════════
+renderList();
+</script>
+</body>
+</html>
